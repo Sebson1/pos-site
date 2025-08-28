@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supermarket POS - Advanced</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .sidebar-icon {
+            width: 24px;
+        }
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .payment-option.selected {
+            background-color: #10B981; /* Tailwind's green-500 */
+            color: white;
+            border-color: #059669; /* Tailwind's green-600 */
+            font-weight: 600;
+        }
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #print-area, #print-area * {
+                visibility: visible;
+            }
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-200">
+    <!-- Login Screen -->
+    <div id="login-screen" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="relative bg-white p-8 rounded-lg shadow-lg w-full max-w-sm">
+            <h2 class="text-2xl font-bold mb-6 text-center">POS Login</h2>
+            <form id="login-form">
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="username" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" required>
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700">Login</button>
+                <p id="login-error" class="text-red-500 text-sm mt-2 text-center hidden">Invalid username or password.</p>
+            </form>
+        </div>
+        <footer class="text-center text-sm text-gray-400 py-4 absolute bottom-0 w-full">
+            Designed by: Sebson Multimedia and IT Experts | 0558527351
+        </footer>
+    </div>
+
+    <!-- Main Application -->
+    <div id="main-app" class="flex h-screen hidden">
+        <!-- Sidebar -->
+        <div class="w-20 bg-gray-800 text-white flex flex-col items-center py-4">
+            <div class="text-2xl font-bold mb-8">SP</div>
+            <nav class="flex flex-col space-y-6 flex-1">
+                <a href="#" id="nav-pos" class="text-center p-2 rounded-lg bg-green-500" title="POS">
+                    <i class="fas fa-cash-register fa-lg"></i>
+                </a>
+                <a href="#" id="nav-inventory" class="text-center p-2 rounded-lg hover:bg-gray-700" title="Inventory">
+                    <i class="fas fa-boxes-stacked fa-lg"></i>
+                </a>
+                <a href="#" id="nav-sales" class="text-center p-2 rounded-lg hover:bg-gray-700" title="Sales Summary">
+                    <i class="fas fa-chart-line fa-lg"></i>
+                </a>
+                <a href="#" id="nav-settings" class="text-center p-2 rounded-lg hover:bg-gray-700" title="Settings">
+                    <i class="fas fa-cog fa-lg"></i>
+                </a>
+            </nav>
+            <div class="mb-4 space-y-6">
+                 <a href="#" id="notification-btn" class="text-center p-2 rounded-lg hover:bg-gray-700 relative" title="Low Stock Alerts">
+                    <i class="fas fa-bell fa-lg"></i>
+                    <span id="notification-badge" class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center hidden">0</span>
+                </a>
+                 <a href="#" id="logout-btn" class="text-center p-2 rounded-lg hover:bg-red-700" title="Logout">
+                    <i class="fas fa-sign-out-alt fa-lg"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- POS Page -->
+            <main id="page-pos" class="flex-1 p-4 flex gap-4">
+                <div class="w-3/5 bg-white rounded-lg shadow p-4 flex flex-col">
+                    <h2 class="text-2xl font-bold mb-4">Products</h2>
+                    <div class="mb-4">
+                        <input type="text" id="searchInput" placeholder="Search by name or scan barcode..." class="w-full p-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div id="product-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto no-scrollbar flex-1">
+                        <!-- Products will be dynamically inserted here -->
+                    </div>
+                </div>
+                <div class="w-2/5 bg-white rounded-lg shadow p-4 flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold">Cart</h2>
+                        <button id="held-sales-btn" class="relative bg-yellow-500 text-white px-3 py-1 rounded-lg text-sm font-semibold hover:bg-yellow-600">
+                            On Hold
+                            <span id="held-sales-badge" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+                        </button>
+                    </div>
+                    <div id="cart-items" class="divide-y divide-gray-200 flex-1 overflow-y-auto no-scrollbar">
+                        <!-- Cart items will be dynamically inserted here -->
+                    </div>
+                    <div id="cart-summary" class="mt-4 border-t pt-4">
+                         <!-- Cart summary will be dynamically inserted here -->
+                    </div>
+                </div>
+            </main>
+
+            <!-- Inventory Page -->
+            <main id="page-inventory" class="flex-1 p-4 hidden">
+                 <div class="bg-white rounded-lg shadow p-4 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold">Inventory Management</h2>
+                        <div class="flex gap-2">
+                             <button id="import-excel-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600">Import from Excel</button>
+                             <input type="file" id="excel-file-input" class="hidden" accept=".xlsx, .xls">
+                             <button id="export-excel-btn" class="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-800">Export to Excel</button>
+                             <button id="add-product-btn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Add New Product</button>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 mb-4">
+                        <input type="text" id="inventory-search-input" placeholder="Search products..." class="w-1/2 p-2 border border-gray-300 rounded-lg">
+                        <select id="inventory-filter-select" class="w-1/2 p-2 border border-gray-300 rounded-lg">
+                            <option value="all">All Stock Status</option>
+                            <option value="in_stock">In Stock</option>
+                            <option value="low_stock">Low Stock</option>
+                            <option value="out_of_stock">Out of Stock</option>
+                        </select>
+                    </div>
+                    <div class="flex-1 overflow-y-auto no-scrollbar">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="p-2 w-1/2">Product</th>
+                                    <th class="p-2">Price</th>
+                                    <th class="p-2">Stock</th>
+                                    <th class="p-2">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-list">
+                                <!-- Inventory items will be here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Sales Summary Page -->
+            <main id="page-sales" class="flex-1 p-4 hidden">
+                <div class="bg-white rounded-lg shadow p-4 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 id="sales-summary-title" class="text-2xl font-bold">Today's Sales Summary</h2>
+                        <div class="flex items-center gap-4">
+                            <div>
+                                <label for="sales-date-filter" class="text-sm font-medium">Filter by Date:</label>
+                                <input type="date" id="sales-date-filter" class="p-1 border border-gray-300 rounded-md">
+                            </div>
+                            <button id="print-summary-btn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                                <i class="fas fa-print mr-2"></i>Print Summary
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="bg-blue-100 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold">Total Revenue</h3>
+                            <p id="total-revenue" class="text-2xl font-bold">$0.00</p>
+                        </div>
+                        <div class="bg-green-100 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold">Total Sales</h3>
+                            <p id="total-sales-count" class="text-2xl font-bold">0</p>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Transaction Details</h3>
+                    <div class="flex-1 overflow-y-auto no-scrollbar border-t">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="p-2">Time</th>
+                                    <th class="p-2">Items</th>
+                                    <th class="p-2">Amount</th>
+                                    <th class="p-2">Payment Method</th>
+                                    <th class="p-2">Cashier</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sales-list">
+                                <!-- Sales transactions will be here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Settings Page -->
+            <main id="page-settings" class="flex-1 p-4 hidden">
+                 <div class="bg-white rounded-lg shadow p-4">
+                    <h2 class="text-2xl font-bold mb-4">Settings</h2>
+                    <div class="space-y-8">
+                        <!-- General Settings -->
+                        <form id="settings-form">
+                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Store Information -->
+                                <div class="space-y-4 p-4 border rounded-lg">
+                                    <h3 class="font-semibold text-lg">Store & Receipt Information</h3>
+                                    <div>
+                                        <label for="store-name" class="block text-sm font-medium text-gray-700">Store Name</label>
+                                        <input type="text" id="store-name" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="store-address" class="block text-sm font-medium text-gray-700">Address</label>
+                                        <input type="text" id="store-address" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="store-contact" class="block text-sm font-medium text-gray-700">Contact / Phone</label>
+                                        <input type="text" id="store-contact" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="receipt-footer" class="block text-sm font-medium text-gray-700">Receipt Footer</label>
+                                        <textarea id="receipt-footer" rows="3" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="e.g., Thank you for your purchase!"></textarea>
+                                    </div>
+                                </div>
+                                <!-- Financial Settings -->
+                                <div class="space-y-4 p-4 border rounded-lg">
+                                    <h3 class="font-semibold text-lg">Financial & Layout Settings</h3>
+                                    <div>
+                                        <label for="currency-symbol" class="block text-sm font-medium text-gray-700">Currency Symbol</label>
+                                        <input type="text" id="currency-symbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="tax-rate" class="block text-sm font-medium text-gray-700">Tax Rate (%)</label>
+                                        <input type="number" id="tax-rate" step="0.01" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="low-stock-threshold" class="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
+                                        <input type="number" id="low-stock-threshold" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="printer-selection" class="block text-sm font-medium text-gray-700">Printer</label>
+                                        <select id="printer-selection" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                            <option value="default">Default Browser Printer</option>
+                                            <option value="receipt">Receipt Printer (58mm)</option>
+                                            <option value="invoice">Invoice Printer (A4)</option>
+                                        </select>
+                                        <p class="text-xs text-gray-500 mt-1">Note: The final printer choice is made in your browser's print dialog.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Payment Summary Alignment</label>
+                                        <div class="mt-2 flex gap-4">
+                                            <label class="inline-flex items-center">
+                                                <input type="radio" name="receipt-align" value="left" class="form-radio">
+                                                <span class="ml-2">Left</span>
+                                            </label>
+                                            <label class="inline-flex items-center">
+                                                <input type="radio" name="receipt-align" value="center" class="form-radio">
+                                                <span class="ml-2">Center</span>
+                                            </label>
+                                            <label class="inline-flex items-center">
+                                                <input type="radio" name="receipt-align" value="right" class="form-radio">
+                                                <span class="ml-2">Right</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-6 flex justify-end">
+                                <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">Save General Settings</button>
+                            </div>
+                        </form>
+                         <div id="settings-saved-msg" class="mt-4 text-green-600 font-semibold hidden">Settings saved successfully!</div>
+
+                        <!-- User Management -->
+                        <div id="user-management-section" class="p-4 border rounded-lg">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-semibold text-lg">User Management</h3>
+                                <button id="add-user-btn" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">Add New User</button>
+                            </div>
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="p-2">Username</th>
+                                        <th class="p-2">Role</th>
+                                        <th class="p-2">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="user-list">
+                                    <!-- User list will be here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </main>
+            <footer class="text-center text-sm text-gray-500 py-2 bg-gray-100 no-print">
+                Designed by: Sebson Multimedia and IT Experts | 0558527351
+            </footer>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Held Sales Modal -->
+    <div id="held-sales-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">Sales On Hold</h2>
+                <button id="close-held-sales-modal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div id="held-sales-list" class="max-h-96 overflow-y-auto">
+                <!-- Held sales list will be here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Low Stock Modal -->
+    <div id="low-stock-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">Low Stock Items</h2>
+                <button id="close-low-stock-modal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div id="low-stock-list" class="max-h-96 overflow-y-auto">
+                <!-- Low stock items list will be here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div id="checkout-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-1/3">
+            <h2 class="text-2xl font-bold mb-4">Checkout</h2>
+            <p class="mb-4">Total amount to be paid: <span id="modal-total" class="font-bold"></span></p>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                <div id="payment-method-options" class="flex justify-between gap-2">
+                    <button data-method="Cash" class="payment-option flex-1 p-3 border rounded-lg hover:bg-gray-100">
+                        <i class="fas fa-money-bill-wave mr-2"></i>Cash
+                    </button>
+                    <button data-method="Credit Card" class="payment-option flex-1 p-3 border rounded-lg hover:bg-gray-100">
+                        <i class="fas fa-credit-card mr-2"></i>Card
+                    </button>
+                    <button data-method="Mobile Money" class="payment-option flex-1 p-3 border rounded-lg hover:bg-gray-100">
+                        <i class="fas fa-mobile-alt mr-2"></i>MoMo
+                    </button>
+                </div>
+            </div>
+            <!-- Cash Payment Details -->
+            <div id="cash-payment-details" class="hidden mt-4">
+                <div class="mb-4">
+                    <label for="amount-paid" class="block text-sm font-medium text-gray-700">Amount Paid</label>
+                    <input type="number" id="amount-paid" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" step="0.01">
+                </div>
+                <div class="flex justify-between items-center font-semibold text-lg">
+                    <span>Change Due:</span>
+                    <span id="change-due">$0.00</span>
+                </div>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button id="cancel-payment-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg mr-2 hover:bg-gray-600">Cancel</button>
+                <button id="confirm-payment-btn" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">Confirm Payment</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add/Edit Product Modal -->
+    <div id="product-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-1/3">
+            <h2 id="product-modal-title" class="text-2xl font-bold mb-4">Add New Product</h2>
+            <form id="product-form">
+                <input type="hidden" id="product-id">
+                <div class="mb-4">
+                    <label for="product-name" class="block">Product Name</label>
+                    <input type="text" id="product-name" class="w-full p-2 border rounded" required>
+                </div>
+                <div class="mb-4">
+                    <label for="product-barcode" class="block">Barcode</label>
+                    <input type="text" id="product-barcode" class="w-full p-2 border rounded" required>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="product-price" class="block">Price</label>
+                        <input type="number" id="product-price" class="w-full p-2 border rounded" step="0.01" required>
+                    </div>
+                    <div>
+                        <label for="product-stock" class="block">Stock Quantity</label>
+                        <input type="number" id="product-stock" class="w-full p-2 border rounded" required>
+                    </div>
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" id="cancel-product-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg mr-2">Cancel</button>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit User Modal -->
+    <div id="user-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-1/3">
+            <h2 id="user-modal-title" class="text-2xl font-bold mb-4">Add New User</h2>
+            <form id="user-form">
+                <input type="hidden" id="user-id">
+                <div class="mb-4">
+                    <label for="user-username" class="block">Username</label>
+                    <input type="text" id="user-username" class="w-full p-2 border rounded" required>
+                </div>
+                <div class="mb-4">
+                    <label for="user-password" class="block">Password</label>
+                    <input type="password" id="user-password" class="w-full p-2 border rounded" required>
+                </div>
+                <div class="mb-4">
+                    <label for="user-role" class="block">Role</label>
+                    <select id="user-role" class="w-full p-2 border rounded">
+                        <option value="cashier">Cashier</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" id="cancel-user-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg mr-2">Cancel</button>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg">Save User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div id="receipt-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden z-50 no-print">
+        <div class="bg-white p-6 rounded-lg shadow-lg w-96">
+            <div id="receipt-content" class="text-sm">
+                 <!-- Receipt content is generated dynamically -->
+            </div>
+            <div id="receipt-controls" class="flex justify-end mt-4">
+                <button id="close-receipt-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg mr-2">Close</button>
+                <button id="print-receipt-btn" class="bg-green-500 text-white px-4 py-2 rounded-lg">Print</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Printable Area -->
+    <div id="print-area" class="hidden"></div>
+
+
+    <script>
+        // --- DATA STORE ---
+        let settings = {
+            storeName: 'Supermarket POS',
+            storeAddress: '123 Market St, Cityville',
+            storeContact: '(123) 456-7890',
+            receiptFooter: 'Thank you for your purchase!',
+            currencySymbol: '$',
+            taxRate: 10.0,
+            receiptTextAlign: 'center',
+            lowStockThreshold: 10,
+            printerSelection: 'default'
+        };
+        let products = [
+            { id: 1, name: 'Milk', price: 2.50, image: 'https://placehold.co/300x300/f0f0f0/333?text=Milk', barcode: '1111', stock: 100 },
+            { id: 2, name: 'Bread', price: 1.80, image: 'https://placehold.co/300x300/f0f0f0/333?text=Bread', barcode: '2222', stock: 8 },
+            { id: 3, name: 'Eggs', price: 3.00, image: 'https://placehold.co/300x300/f0f0f0/333?text=Eggs', barcode: '3333', stock: 120 },
+            { id: 4, name: 'Cheese', price: 4.50, image: 'https://placehold.co/300x300/f0f0f0/333?text=Cheese', barcode: '4444', stock: 5 },
+        ];
+        let users = [
+            { id: 1, username: 'admin', password: 'admin', role: 'admin' },
+            { id: 2, username: 'cashier', password: '1234', role: 'cashier' }
+        ];
+        let cart = [];
+        let sales = [];
+        let heldSales = [];
+        let selectedPaymentMethod = 'Cash';
+        let currentUser = null;
+
+        // --- DOM ELEMENTS ---
+        const loginScreen = document.getElementById('login-screen');
+        const mainApp = document.getElementById('main-app');
+        const loginForm = document.getElementById('login-form');
+        const loginError = document.getElementById('login-error');
+        const logoutBtn = document.getElementById('logout-btn');
+        const notificationBtn = document.getElementById('notification-btn');
+        const notificationBadge = document.getElementById('notification-badge');
+        const lowStockModal = document.getElementById('low-stock-modal');
+        const closeLowStockModalBtn = document.getElementById('close-low-stock-modal');
+        const lowStockListEl = document.getElementById('low-stock-list');
+        const heldSalesBtn = document.getElementById('held-sales-btn');
+        const heldSalesBadge = document.getElementById('held-sales-badge');
+        const heldSalesModal = document.getElementById('held-sales-modal');
+        const closeHeldSalesModalBtn = document.getElementById('close-held-sales-modal');
+        const heldSalesListEl = document.getElementById('held-sales-list');
+        const pages = { pos: document.getElementById('page-pos'), inventory: document.getElementById('page-inventory'), sales: document.getElementById('page-sales'), settings: document.getElementById('page-settings') };
+        const navLinks = { pos: document.getElementById('nav-pos'), inventory: document.getElementById('nav-inventory'), sales: document.getElementById('nav-sales'), settings: document.getElementById('nav-settings') };
+        const productListEl = document.getElementById('product-list');
+        const cartItemsEl = document.getElementById('cart-items');
+        const cartSummaryEl = document.getElementById('cart-summary');
+        const searchInput = document.getElementById('searchInput');
+        const checkoutModal = document.getElementById('checkout-modal');
+        const modalTotal = document.getElementById('modal-total');
+        const cancelPaymentBtn = document.getElementById('cancel-payment-btn');
+        const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
+        const paymentMethodOptions = document.getElementById('payment-method-options');
+        const cashPaymentDetails = document.getElementById('cash-payment-details');
+        const amountPaidInput = document.getElementById('amount-paid');
+        const changeDueEl = document.getElementById('change-due');
+        const inventoryListEl = document.getElementById('inventory-list');
+        const addProductBtn = document.getElementById('add-product-btn');
+        const productModal = document.getElementById('product-modal');
+        const productModalTitle = document.getElementById('product-modal-title');
+        const productForm = document.getElementById('product-form');
+        const cancelProductBtn = document.getElementById('cancel-product-btn');
+        const productIdInput = document.getElementById('product-id');
+        const salesSummaryTitle = document.getElementById('sales-summary-title');
+        const salesDateFilter = document.getElementById('sales-date-filter');
+        const totalRevenueEl = document.getElementById('total-revenue');
+        const totalSalesCountEl = document.getElementById('total-sales-count');
+        const salesListEl = document.getElementById('sales-list');
+        const receiptModal = document.getElementById('receipt-modal');
+        const receiptContentEl = document.getElementById('receipt-content');
+        const closeReceiptBtn = document.getElementById('close-receipt-btn');
+        const printReceiptBtn = document.getElementById('print-receipt-btn');
+        const settingsForm = document.getElementById('settings-form');
+        const settingsSavedMsg = document.getElementById('settings-saved-msg');
+        const userManagementSection = document.getElementById('user-management-section');
+        const userListEl = document.getElementById('user-list');
+        const addUserBtn = document.getElementById('add-user-btn');
+        const userModal = document.getElementById('user-modal');
+        const userModalTitle = document.getElementById('user-modal-title');
+        const userForm = document.getElementById('user-form');
+        const cancelUserBtn = document.getElementById('cancel-user-btn');
+        const userIdInput = document.getElementById('user-id');
+        const importExcelBtn = document.getElementById('import-excel-btn');
+        const exportExcelBtn = document.getElementById('export-excel-btn');
+        const excelFileInput = document.getElementById('excel-file-input');
+        const inventorySearchInput = document.getElementById('inventory-search-input');
+        const inventoryFilterSelect = document.getElementById('inventory-filter-select');
+        const printSummaryBtn = document.getElementById('print-summary-btn');
+        const printArea = document.getElementById('print-area');
+
+        // --- AUTHENTICATION & RBAC ---
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const user = users.find(u => u.username === username && u.password === password);
+
+            if (user) {
+                currentUser = user;
+                loginScreen.classList.add('hidden');
+                mainApp.classList.remove('hidden');
+                loginError.classList.add('hidden');
+                loginForm.reset();
+                setupUIForRole();
+                checkLowStock();
+            } else {
+                loginError.classList.remove('hidden');
+            }
+        });
+
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            currentUser = null;
+            mainApp.classList.add('hidden');
+            loginScreen.classList.remove('hidden');
+        });
+
+        function setupUIForRole() {
+            if (!currentUser) return;
+            const is_admin = currentUser.role === 'admin';
+            navLinks.inventory.style.display = is_admin ? 'block' : 'none';
+            navLinks.sales.style.display = is_admin ? 'block' : 'none';
+            navLinks.settings.style.display = is_admin ? 'block' : 'none';
+            userManagementSection.style.display = is_admin ? 'block' : 'none';
+            
+            // Default to POS page on login
+            switchPage('pos');
+        }
+        
+        // --- NOTIFICATION LOGIC ---
+        function checkLowStock() {
+            const lowStockItems = products.filter(p => p.stock <= settings.lowStockThreshold);
+            if (lowStockItems.length > 0) {
+                notificationBadge.textContent = lowStockItems.length;
+                notificationBadge.classList.remove('hidden');
+            } else {
+                notificationBadge.classList.add('hidden');
+            }
+            
+            lowStockListEl.innerHTML = '';
+            if(lowStockItems.length === 0) {
+                 lowStockListEl.innerHTML = '<p class="text-gray-500">No items are low on stock.</p>';
+                 return;
+            }
+
+            const list = document.createElement('ul');
+            list.className = 'divide-y divide-gray-200';
+            lowStockItems.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.className = 'py-2 flex justify-between';
+                listItem.innerHTML = `
+                    <span>${item.name}</span>
+                    <span class="font-bold text-red-600">Stock: ${item.stock}</span>
+                `;
+                list.appendChild(listItem);
+            });
+            lowStockListEl.appendChild(list);
+        }
+
+        notificationBtn.addEventListener('click', () => lowStockModal.classList.remove('hidden'));
+        closeLowStockModalBtn.addEventListener('click', () => lowStockModal.classList.add('hidden'));
+
+
+        // --- UTILITY FUNCTIONS ---
+        function formatCurrency(amount) {
+            return `${settings.currencySymbol}${amount.toFixed(2)}`;
+        }
+
+        function getTodayDateString() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        // --- NAVIGATION ---
+        function switchPage(pageKey) {
+            Object.values(pages).forEach(page => page.classList.add('hidden'));
+            pages[pageKey].classList.remove('hidden');
+            Object.values(navLinks).forEach(link => link.classList.remove('bg-green-500'));
+            navLinks[pageKey].classList.add('bg-green-500');
+            
+            if (pageKey === 'inventory') filterAndRenderInventory();
+            if (pageKey === 'sales') {
+                salesDateFilter.value = getTodayDateString();
+                renderSalesSummary();
+            }
+            if (pageKey === 'pos') renderProducts();
+            if (pageKey === 'settings') {
+                loadSettings();
+                if(currentUser.role === 'admin') renderUsers();
+            }
+        }
+
+        Object.keys(navLinks).forEach(key => {
+            navLinks[key].addEventListener('click', (e) => {
+                e.preventDefault();
+                switchPage(key);
+            });
+        });
+
+        // --- POS PAGE LOGIC ---
+        function renderProducts(filteredProducts = products) {
+            productListEl.innerHTML = '';
+            filteredProducts.forEach(product => {
+                const productEl = document.createElement('div');
+                productEl.className = `bg-white p-4 rounded-lg shadow cursor-pointer hover:shadow-lg transition-shadow ${product.stock <= 0 ? 'opacity-50' : ''}`;
+                productEl.innerHTML = `
+                    <img src="${product.image}" alt="${product.name}" class="w-full h-32 object-cover rounded-t-lg" onerror="this.onerror=null;this.src='https://placehold.co/300x300/f8f8f8/ccc?text=No+Image';">
+                    <h3 class="text-lg font-bold mt-2">${product.name}</h3>
+                    <p class="text-gray-500">${formatCurrency(product.price)}</p>
+                    <p class="text-sm ${product.stock > settings.lowStockThreshold ? 'text-green-600' : 'text-red-600'}">Stock: ${product.stock}</p>
+                `;
+                if (product.stock > 0) {
+                    productEl.addEventListener('click', () => addProductToCart(product));
+                }
+                productListEl.appendChild(productEl);
+            });
+        }
+
+        function addProductToCart(product) {
+            const cartItem = cart.find(item => item.id === product.id);
+            const productInStock = products.find(p => p.id === product.id);
+            if (cartItem) {
+                if (cartItem.quantity < productInStock.stock) {
+                    cartItem.quantity++;
+                } else {
+                    alert('Cannot add more than available stock.');
+                }
+            } else {
+                 if (productInStock.stock > 0) {
+                    cart.push({ ...product, quantity: 1 });
+                 } else {
+                    alert('Product is out of stock.');
+                 }
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            cartItemsEl.innerHTML = '';
+            if (cart.length === 0) {
+                cartItemsEl.innerHTML = '<p class="text-gray-500 text-center my-4">Cart is empty</p>';
+            } else {
+                cart.forEach(item => {
+                    const cartItemEl = document.createElement('div');
+                    cartItemEl.className = 'flex justify-between items-center py-2';
+                    cartItemEl.innerHTML = `
+                        <div>
+                            <p class="font-semibold">${item.name}</p>
+                            <p class="text-sm text-gray-500">${formatCurrency(item.price)}</p>
+                        </div>
+                        <div class="flex items-center">
+                            <button class="px-2" onclick="updateQuantity(${item.id}, -1)">-</button>
+                            <span class="px-2">${item.quantity}</span>
+                            <button class="px-2" onclick="updateQuantity(${item.id}, 1)">+</button>
+                            <button class="ml-4 text-red-500 hover:text-red-700" onclick="removeFromCart(${item.id})"><i class="fas fa-trash"></i></button>
+                        </div>
+                    `;
+                    cartItemsEl.appendChild(cartItemEl);
+                });
+            }
+            renderCartSummary();
+        }
+
+        function renderCartSummary() {
+            const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+            const taxAmount = subtotal * (settings.taxRate / 100);
+            const total = subtotal + taxAmount;
+
+            cartSummaryEl.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span>Subtotal</span>
+                        <span>${formatCurrency(subtotal)}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Tax (${settings.taxRate}%)</span>
+                        <span>${formatCurrency(taxAmount)}</span>
+                    </div>
+                    <div class="flex justify-between font-bold text-xl">
+                        <span>Total</span>
+                        <span>${formatCurrency(total)}</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mt-4">
+                    <button id="checkout-btn" class="col-span-2 w-full bg-green-500 text-white p-3 rounded-lg font-semibold hover:bg-green-600">Checkout</button>
+                    <button id="hold-sale-btn" class="w-full bg-yellow-500 text-white p-3 rounded-lg font-semibold hover:bg-yellow-600">Hold</button>
+                </div>
+                <button id="clear-cart-btn" class="w-full bg-red-500 text-white p-3 rounded-lg mt-2 font-semibold hover:bg-red-600">Clear Cart</button>
+            `;
+
+            document.getElementById('checkout-btn').addEventListener('click', openCheckoutModal);
+            document.getElementById('hold-sale-btn').addEventListener('click', holdSale);
+            document.getElementById('clear-cart-btn').addEventListener('click', () => {
+                cart = [];
+                renderCart();
+            });
+        }
+
+        function openCheckoutModal() {
+            if(cart.length === 0) {
+                alert("Your cart is empty!");
+                return;
+            }
+            const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0) * (1 + settings.taxRate / 100);
+            modalTotal.textContent = formatCurrency(total);
+            
+            selectedPaymentMethod = 'Cash';
+            document.querySelectorAll('.payment-option').forEach(btn => {
+                btn.classList.remove('selected');
+                if (btn.dataset.method === 'Cash') btn.classList.add('selected');
+            });
+            cashPaymentDetails.classList.remove('hidden');
+            amountPaidInput.value = '';
+            changeDueEl.textContent = formatCurrency(0);
+            
+            checkoutModal.classList.remove('hidden');
+        }
+        
+        window.updateQuantity = function(productId, change) {
+            const cartItem = cart.find(item => item.id === productId);
+            const productInStock = products.find(p => p.id === productId);
+            if (cartItem) {
+                if (change > 0 && cartItem.quantity >= productInStock.stock) {
+                    alert('Cannot add more than available stock.');
+                    return;
+                }
+                cartItem.quantity += change;
+                if (cartItem.quantity <= 0) removeFromCart(productId);
+                renderCart();
+            }
+        }
+
+        window.removeFromCart = function(productId) {
+            cart = cart.filter(item => item.id !== productId);
+            renderCart();
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm) || p.barcode.includes(searchTerm));
+            renderProducts(filtered);
+        });
+
+        // --- INVENTORY PAGE LOGIC ---
+        function filterAndRenderInventory() {
+            const searchTerm = inventorySearchInput.value.toLowerCase();
+            const filterValue = inventoryFilterSelect.value;
+
+            let filteredProducts = products.filter(p => 
+                p.name.toLowerCase().includes(searchTerm) || 
+                p.barcode.toLowerCase().includes(searchTerm)
+            );
+
+            switch (filterValue) {
+                case 'in_stock':
+                    filteredProducts = filteredProducts.filter(p => p.stock > settings.lowStockThreshold);
+                    break;
+                case 'low_stock':
+                    filteredProducts = filteredProducts.filter(p => p.stock <= settings.lowStockThreshold && p.stock > 0);
+                    break;
+                case 'out_of_stock':
+                    filteredProducts = filteredProducts.filter(p => p.stock === 0);
+                    break;
+            }
+            renderInventory(filteredProducts);
+        }
+
+        inventorySearchInput.addEventListener('input', filterAndRenderInventory);
+        inventoryFilterSelect.addEventListener('change', filterAndRenderInventory);
+
+        function renderInventory(productsToRender = products) {
+            inventoryListEl.innerHTML = '';
+            productsToRender.forEach(p => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-2 border-b">
+                        <div class="font-semibold">${p.name}</div>
+                        <div class="text-xs text-gray-500">Barcode: ${p.barcode}</div>
+                    </td>
+                    <td class="p-2 border-b">${formatCurrency(p.price)}</td>
+                    <td class="p-2 border-b">${p.stock}</td>
+                    <td class="p-2 border-b">
+                        <button class="text-blue-500 mr-2" onclick="openEditProductModal(${p.id})"><i class="fas fa-edit"></i></button>
+                        <button class="text-red-500" onclick="deleteProduct(${p.id})"><i class="fas fa-trash"></i></button>
+                    </td>
+                `;
+                inventoryListEl.appendChild(row);
+            });
+        }
+
+        function openAddProductModal() {
+            productModalTitle.textContent = 'Add New Product';
+            productForm.reset();
+            productIdInput.value = '';
+            productModal.classList.remove('hidden');
+        }
+
+        window.openEditProductModal = function(id) {
+            const product = products.find(p => p.id === id);
+            if (!product) return;
+            productModalTitle.textContent = 'Edit Product';
+            productIdInput.value = product.id;
+            document.getElementById('product-name').value = product.name;
+            document.getElementById('product-barcode').value = product.barcode;
+            document.getElementById('product-price').value = product.price;
+            document.getElementById('product-stock').value = product.stock;
+            productModal.classList.remove('hidden');
+        }
+
+        productForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = productIdInput.value;
+            const newProductData = {
+                name: document.getElementById('product-name').value,
+                barcode: document.getElementById('product-barcode').value,
+                price: parseFloat(document.getElementById('product-price').value),
+                stock: parseInt(document.getElementById('product-stock').value),
+                image: 'https://placehold.co/300x300/f0f0f0/333?text=New'
+            };
+
+            if (id) { // Editing
+                const index = products.findIndex(p => p.id == id);
+                products[index] = { ...products[index], ...newProductData };
+            } else { // Adding
+                newProductData.id = products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1;
+                products.push(newProductData);
+            }
+            filterAndRenderInventory();
+            checkLowStock();
+            productModal.classList.add('hidden');
+        });
+
+        window.deleteProduct = function(id) {
+            if (confirm('Are you sure you want to delete this product?')) {
+                products = products.filter(p => p.id !== id);
+                filterAndRenderInventory();
+                checkLowStock();
+            }
+        }
+        
+        // --- EXCEL IMPORT/EXPORT ---
+        importExcelBtn.addEventListener('click', () => excelFileInput.click());
+        excelFileInput.addEventListener('change', handleFileUpload);
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet);
+                
+                // Basic validation
+                if (json.length > 0 && 'name' in json[0] && 'barcode' in json[0] && 'price' in json[0] && 'stock' in json[0]) {
+                    const newProducts = json.map((row, index) => ({
+                        id: products.length + index + 1,
+                        name: row.name,
+                        barcode: String(row.barcode),
+                        price: parseFloat(row.price),
+                        stock: parseInt(row.stock),
+                        image: 'https://placehold.co/300x300/f0f0f0/333?text=Imported'
+                    }));
+                    products = newProducts;
+                    filterAndRenderInventory();
+                    renderProducts();
+                    checkLowStock();
+                    alert('Products imported successfully!');
+                } else {
+                    alert('Invalid Excel format. Please ensure columns are named: name, barcode, price, stock');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        exportExcelBtn.addEventListener('click', () => {
+            const worksheet = XLSX.utils.json_to_sheet(products);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
+            XLSX.writeFile(workbook, "products.xlsx");
+        });
+
+
+        // --- SALES SUMMARY LOGIC ---
+        function renderSalesSummary() {
+            const selectedDate = salesDateFilter.value;
+            
+            if (selectedDate === getTodayDateString()) {
+                salesSummaryTitle.textContent = "Today's Sales Summary";
+            } else {
+                salesSummaryTitle.textContent = `Sales Summary for ${selectedDate}`;
+            }
+
+            const filteredSales = sales.filter(s => {
+                const saleDate = new Date(s.date).toISOString().split('T')[0];
+                return saleDate === selectedDate;
+            });
+
+            salesListEl.innerHTML = '';
+            let totalRevenue = 0;
+
+            if (filteredSales.length === 0) {
+                salesListEl.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-gray-500">No sales for this date.</td></tr>';
+            } else {
+                filteredSales.forEach(sale => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="p-2 border-b">${new Date(sale.date).toLocaleTimeString()}</td>
+                        <td class="p-2 border-b">${sale.items.reduce((sum, item) => sum + item.quantity, 0)}</td>
+                        <td class="p-2 border-b">${formatCurrency(sale.total)}</td>
+                        <td class="p-2 border-b">${sale.paymentMethod}</td>
+                        <td class="p-2 border-b">${sale.cashier}</td>
+                    `;
+                    salesListEl.appendChild(row);
+                    totalRevenue += sale.total;
+                });
+            }
+
+            totalRevenueEl.textContent = formatCurrency(totalRevenue);
+            totalSalesCountEl.textContent = filteredSales.length;
+        }
+        salesDateFilter.addEventListener('change', renderSalesSummary);
+        
+        printSummaryBtn.addEventListener('click', () => {
+            const selectedDate = salesDateFilter.value;
+            const filteredSales = sales.filter(s => new Date(s.date).toISOString().split('T')[0] === selectedDate);
+            let totalRevenue = 0;
+            filteredSales.forEach(s => totalRevenue += s.total);
+
+            let transactionRows = '';
+            filteredSales.forEach(sale => {
+                transactionRows += `
+                    <tr>
+                        <td style="padding: 4px; border: 1px solid #ddd;">${new Date(sale.date).toLocaleTimeString()}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd;">${sale.items.reduce((sum, item) => sum + item.quantity, 0)}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd;">${formatCurrency(sale.total)}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd;">${sale.paymentMethod}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd;">${sale.cashier}</td>
+                    </tr>
+                `;
+            });
+
+            const printContent = `
+                <div style="font-family: sans-serif; width: 210mm; padding: 20px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="font-size: 24px; margin: 0;">${settings.storeName}</h2>
+                        <p style="margin: 0;">${settings.storeAddress}</p>
+                        <p style="margin: 0;">${settings.storeContact}</p>
+                    </div>
+                    <h3 style="text-align: center; font-size: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px;">Sales Summary for ${selectedDate}</h3>
+                    <div style="display: flex; justify-content: space-around; margin-bottom: 20px; font-size: 16px;">
+                        <div><strong>Total Revenue:</strong> ${formatCurrency(totalRevenue)}</div>
+                        <div><strong>Total Sales:</strong> ${filteredSales.length}</div>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                        <thead style="background-color: #f2f2f2;">
+                            <tr>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Time</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Items</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Amount</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Payment Method</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Cashier</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${transactionRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            printArea.innerHTML = printContent;
+            window.print();
+        });
+
+
+        // --- CHECKOUT AND RECEIPT LOGIC ---
+        paymentMethodOptions.addEventListener('click', (e) => {
+            const clickedButton = e.target.closest('.payment-option');
+            if (clickedButton) {
+                selectedPaymentMethod = clickedButton.dataset.method;
+                document.querySelectorAll('.payment-option').forEach(btn => btn.classList.remove('selected'));
+                clickedButton.classList.add('selected');
+                if (selectedPaymentMethod === 'Cash') {
+                    cashPaymentDetails.classList.remove('hidden');
+                } else {
+                    cashPaymentDetails.classList.add('hidden');
+                }
+            }
+        });
+        
+        amountPaidInput.addEventListener('input', () => {
+            const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0) * (1 + settings.taxRate / 100);
+            const amountPaid = parseFloat(amountPaidInput.value) || 0;
+            const change = amountPaid - total;
+            changeDueEl.textContent = formatCurrency(change >= 0 ? change : 0);
+        });
+
+        confirmPaymentBtn.addEventListener('click', () => {
+            const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+            const taxAmount = subtotal * (settings.taxRate / 100);
+            const total = subtotal + taxAmount;
+            
+            const saleRecord = {
+                date: new Date(),
+                items: [...cart],
+                subtotal: subtotal,
+                tax: taxAmount,
+                total: total,
+                paymentMethod: selectedPaymentMethod,
+                cashier: currentUser.username
+            };
+
+            if (selectedPaymentMethod === 'Cash') {
+                const amountPaid = parseFloat(amountPaidInput.value) || 0;
+                if (amountPaid < total) {
+                    alert('Amount paid is less than the total amount.');
+                    return;
+                }
+                saleRecord.amountPaid = amountPaid;
+                saleRecord.changeDue = amountPaid - total;
+            }
+
+            sales.push(saleRecord);
+
+            cart.forEach(cartItem => {
+                const product = products.find(p => p.id === cartItem.id);
+                if(product) product.stock -= cartItem.quantity;
+            });
+
+            generateReceipt(saleRecord);
+            receiptModal.classList.remove('hidden');
+            
+            cart = [];
+            renderCart();
+            renderProducts();
+            checkLowStock();
+            checkoutModal.classList.add('hidden');
+        });
+
+        function generateReceipt(sale) {
+            const alignClass = `text-${settings.receiptTextAlign}`;
+            let itemsHtml = '<table class="w-full text-left">';
+            sale.items.forEach(item => {
+                itemsHtml += `
+                    <tr>
+                        <td>${item.quantity} x ${item.name}</td>
+                        <td class="text-right">${formatCurrency(item.price * item.quantity)}</td>
+                    </tr>
+                `;
+            });
+            itemsHtml += '</table>';
+
+            let paymentDetailsHtml = `<p>Paid with: ${sale.paymentMethod}</p>`;
+            if (sale.paymentMethod === 'Cash') {
+                paymentDetailsHtml += `
+                    <p>Amount Paid: ${formatCurrency(sale.amountPaid)}</p>
+                    <p>Change Due: ${formatCurrency(sale.changeDue)}</p>
+                `;
+            }
+
+            receiptContentEl.innerHTML = `
+                <div class="text-center">
+                    <h2 class="text-xl font-bold mb-1">${settings.storeName}</h2>
+                    <p>${settings.storeAddress}</p>
+                    <p>${settings.storeContact}</p>
+                </div>
+                <hr class="my-2 border-dashed">
+                <div class="text-left">
+                    <p>Receipt #: ${sale.date.getTime()}</p>
+                    <p>Date: ${sale.date.toLocaleString()}</p>
+                    <p>Cashier: ${sale.cashier}</p>
+                </div>
+                <hr class="my-2 border-dashed">
+                ${itemsHtml}
+                <hr class="my-2 border-dashed">
+                <div class="space-y-1 ${alignClass}">
+                    <p>Subtotal: ${formatCurrency(sale.subtotal)}</p>
+                    <p>Tax (${settings.taxRate}%): ${formatCurrency(sale.tax)}</p>
+                    <p class="font-bold">Total: ${formatCurrency(sale.total)}</p>
+                </div>
+                 <hr class="my-2 border-dashed">
+                <div class="${alignClass}">
+                    ${paymentDetailsHtml}
+                </div>
+                <div class="text-center">
+                    <p class="mt-4 whitespace-pre-wrap">${settings.receiptFooter}</p>
+                </div>
+            `;
+        }
+        
+        printReceiptBtn.addEventListener('click', () => {
+            printArea.innerHTML = receiptContentEl.innerHTML;
+            window.print();
+        });
+
+        // --- SETTINGS LOGIC ---
+        function loadSettings() {
+            document.getElementById('store-name').value = settings.storeName;
+            document.getElementById('store-address').value = settings.storeAddress;
+            document.getElementById('store-contact').value = settings.storeContact;
+            document.getElementById('receipt-footer').value = settings.receiptFooter;
+            document.getElementById('currency-symbol').value = settings.currencySymbol;
+            document.getElementById('tax-rate').value = settings.taxRate;
+            document.getElementById('low-stock-threshold').value = settings.lowStockThreshold;
+            document.getElementById('printer-selection').value = settings.printerSelection;
+            document.querySelector(`input[name="receipt-align"][value="${settings.receiptTextAlign}"]`).checked = true;
+        }
+
+        function saveSettings() {
+            settings.storeName = document.getElementById('store-name').value;
+            settings.storeAddress = document.getElementById('store-address').value;
+            settings.storeContact = document.getElementById('store-contact').value;
+            settings.receiptFooter = document.getElementById('receipt-footer').value;
+            settings.currencySymbol = document.getElementById('currency-symbol').value;
+            settings.taxRate = parseFloat(document.getElementById('tax-rate').value) || 0;
+            settings.lowStockThreshold = parseInt(document.getElementById('low-stock-threshold').value) || 10;
+            settings.receiptTextAlign = document.querySelector('input[name="receipt-align"]:checked').value;
+            settings.printerSelection = document.getElementById('printer-selection').value;
+            
+            settingsSavedMsg.classList.remove('hidden');
+            setTimeout(() => {
+                settingsSavedMsg.classList.add('hidden');
+            }, 3000);
+
+            checkLowStock();
+            renderCart();
+        }
+
+        settingsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveSettings();
+        });
+
+        // --- USER MANAGEMENT LOGIC ---
+        function renderUsers() {
+            userListEl.innerHTML = '';
+            users.forEach(u => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-2 border-b">${u.username}</td>
+                    <td class="p-2 border-b capitalize">${u.role}</td>
+                    <td class="p-2 border-b">
+                        <button class="text-blue-500 mr-2" onclick="openEditUserModal(${u.id})"><i class="fas fa-edit"></i></button>
+                        <button class="text-red-500" onclick="deleteUser(${u.id})"><i class="fas fa-trash"></i></button>
+                    </td>
+                `;
+                userListEl.appendChild(row);
+            });
+        }
+        
+        addUserBtn.addEventListener('click', () => {
+            userModalTitle.textContent = 'Add New User';
+            userForm.reset();
+            userIdInput.value = '';
+            document.getElementById('user-password').required = true;
+            userModal.classList.remove('hidden');
+        });
+
+        window.openEditUserModal = function(id) {
+            const user = users.find(u => u.id === id);
+            if (!user) return;
+            userModalTitle.textContent = 'Edit User';
+            userIdInput.value = user.id;
+            document.getElementById('user-username').value = user.username;
+            document.getElementById('user-password').value = '';
+            document.getElementById('user-password').required = false; // Password not required on edit
+            document.getElementById('user-role').value = user.role;
+            userModal.classList.remove('hidden');
+        }
+
+        userForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = userIdInput.value;
+            const username = document.getElementById('user-username').value;
+            const password = document.getElementById('user-password').value;
+            const role = document.getElementById('user-role').value;
+
+            if (id) { // Editing
+                const user = users.find(u => u.id == id);
+                user.username = username;
+                user.role = role;
+                if (password) { // Only update password if a new one is entered
+                    user.password = password;
+                }
+            } else { // Adding
+                const newUser = {
+                    id: users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1,
+                    username,
+                    password,
+                    role
+                };
+                users.push(newUser);
+            }
+            renderUsers();
+            userModal.classList.add('hidden');
+        });
+
+        window.deleteUser = function(id) {
+            if (id === currentUser.id) {
+                alert("You cannot delete the currently logged-in user.");
+                return;
+            }
+            if (confirm('Are you sure you want to delete this user?')) {
+                users = users.filter(u => u.id !== id);
+                renderUsers();
+            }
+        }
+        
+        // --- HELD SALES LOGIC ---
+        function updateHeldSalesIndicator() {
+            if (heldSales.length > 0) {
+                heldSalesBadge.textContent = heldSales.length;
+                heldSalesBadge.classList.remove('hidden');
+            } else {
+                heldSalesBadge.classList.add('hidden');
+            }
+        }
+        
+        function holdSale() {
+            if (cart.length === 0) {
+                alert("Cannot hold an empty cart.");
+                return;
+            }
+            const saleId = Date.now();
+            heldSales.push({ id: saleId, cart: [...cart], time: new Date() });
+            cart = [];
+            renderCart();
+            updateHeldSalesIndicator();
+        }
+
+        heldSalesBtn.addEventListener('click', () => {
+             heldSalesListEl.innerHTML = '';
+             if (heldSales.length === 0) {
+                heldSalesListEl.innerHTML = '<p class="text-gray-500 text-center">No sales are on hold.</p>';
+             } else {
+                heldSales.forEach(sale => {
+                    const item = document.createElement('div');
+                    item.className = 'flex justify-between items-center p-2 border-b';
+                    item.innerHTML = `
+                        <div>
+                            <p class="font-semibold">Sale held at ${sale.time.toLocaleTimeString()}</p>
+                            <p class="text-sm text-gray-600">${sale.cart.length} items</p>
+                        </div>
+                        <div>
+                            <button class="bg-green-500 text-white px-3 py-1 rounded-lg text-sm mr-2" onclick="restoreSale(${sale.id})">Restore</button>
+                            <button class="bg-red-500 text-white px-3 py-1 rounded-lg text-sm" onclick="deleteHeldSale(${sale.id})">Delete</button>
+                        </div>
+                    `;
+                    heldSalesListEl.appendChild(item);
+                });
+             }
+             heldSalesModal.classList.remove('hidden');
+        });
+        
+        closeHeldSalesModalBtn.addEventListener('click', () => heldSalesModal.classList.add('hidden'));
+
+        window.restoreSale = function(saleId) {
+            if (cart.length > 0) {
+                if (!confirm("This will overwrite the current cart. Are you sure?")) {
+                    return;
+                }
+            }
+            const saleIndex = heldSales.findIndex(s => s.id === saleId);
+            if (saleIndex > -1) {
+                cart = heldSales[saleIndex].cart;
+                heldSales.splice(saleIndex, 1);
+                renderCart();
+                updateHeldSalesIndicator();
+                heldSalesModal.classList.add('hidden');
+            }
+        }
+
+        window.deleteHeldSale = function(saleId) {
+             if (confirm("Are you sure you want to delete this held sale?")) {
+                heldSales = heldSales.filter(s => s.id !== saleId);
+                updateHeldSalesIndicator();
+                heldSalesBtn.click(); // Re-render the modal content
+             }
+        }
+
+        // --- MODAL CONTROLS ---
+        cancelPaymentBtn.addEventListener('click', () => checkoutModal.classList.add('hidden'));
+        addProductBtn.addEventListener('click', openAddProductModal);
+        cancelProductBtn.addEventListener('click', () => productModal.classList.add('hidden'));
+        closeReceiptBtn.addEventListener('click', () => receiptModal.classList.add('hidden'));
+        cancelUserBtn.addEventListener('click', () => userModal.classList.add('hidden'));
+
+        // --- INITIAL RENDER ---
+        // App starts with login screen, so no initial render here.
+    </script>
+</body>
+</html>
